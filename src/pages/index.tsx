@@ -1,118 +1,348 @@
-import Image from 'next/image'
-import { Inter } from 'next/font/google'
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
+import { clamp, cn } from "@/lib/utils";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Inter } from "next/font/google";
+import Head from "next/head";
+import {
+  AccumulativeShadows,
+  Environment,
+  OrbitControls,
+  PerspectiveCamera,
+  RandomizedLight,
+  Stars,
+} from "@react-three/drei";
+import * as THREE from "three";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { mutateGameStore, useGameStore } from "@/hooks/use-game-store";
+import { mutateCameraStore, useCameraStore } from "@/hooks/use-camera-store";
+import { BuildingGrid } from "@/components/BuildingGrid";
+import { motion } from "framer-motion";
+import { ShopTab } from "@/components/ShopTab";
+import { Button } from "@/components/ui/Button";
+import { ChevronLeft } from "lucide-react";
+import { InventoryTab } from "@/components/InventoryTab";
+import { BuildItemGhost } from "@/components/BuildItemGhost";
+import { BuildModePrompt } from "@/components/BuildModePrompt";
+import { useKeyPressListener } from "@/hooks/use-key-press-listener";
+import {
+  setBuildModePos,
+  tryPlaceItem,
+  useBuildModeStore,
+} from "@/hooks/use-build-mode-store";
+import { useUserDataStore } from "@/hooks/use-user-data-store";
+import { PlacedItem } from "@/components/PlacedItem";
+import { fetchEntityRegistry } from "@/game/entity-registry";
+import { useQuery } from "@tanstack/react-query";
+import { SelectedWorldItemPrompt } from "@/components/SelectedWorldItemPrompt";
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ["latin"] });
 
 export default function Home() {
+  const [isMenuOpen, setIsMenuOpen] = useState(true);
+
+  const { currentTab, selectedWorldItem } = useGameStore((s) => ({
+    currentTab: s.currentTab,
+    selectedWorldItem: s.selectedWorldItem,
+  }));
+
+  const selectedItem = useBuildModeStore((s) => s.selectedItem);
+
+  useKeyPressListener(
+    (e, key) => {
+      if (selectedWorldItem !== undefined) return;
+
+      if (key === "e") {
+        mutateGameStore("currentTab", "inventory");
+      } else if (key === "f") {
+        mutateGameStore("currentTab", "shop");
+      } else if (key === "c") {
+        mutateGameStore("currentTab", "settings");
+      } else if (key === "Tab") {
+        e.preventDefault();
+        setIsMenuOpen((o) => !o);
+      }
+    },
+    ["E", "F", "C", "TAB"]
+  );
+
   return (
-    <main
-      className={`flex min-h-screen flex-col items-center justify-between p-24 ${inter.className}`}
-    >
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/pages/index.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <>
+      <Head>
+        <title>{"Miner's Delight"}</title>
+      </Head>
+      <main
+        className={cn(
+          "h-screen text-foreground bg-background",
+          inter.className
+        )}
+      >
+        <motion.div
+          className="absolute h-screen w-96 z-10"
+          initial={isMenuOpen ? "open" : "closed"}
+          animate={isMenuOpen ? "open" : "closed"}
+          transition={{
+            type: "tween",
+            ease: "easeInOut",
+            duration: 0.25,
+          }}
+          variants={{
+            open: {
+              x: 0,
+            },
+            closed: {
+              x: "-100%",
+            },
+          }}
+        >
+          <Button
+            className="absolute left-[100%] h-16 p-0"
+            variant="secondary"
+            onClick={() => setIsMenuOpen((o) => !o)}
           >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+            <motion.div
+              className="w-full h-full flex items-center justify-center"
+              initial={isMenuOpen ? "open" : "closed"}
+              animate={isMenuOpen ? "open" : "closed"}
+              transition={{
+                type: "spring",
+                stiffness: 150,
+                damping: 25,
+              }}
+              variants={{
+                open: {
+                  rotate: "0",
+                },
+                closed: {
+                  rotate: "180deg",
+                },
+              }}
+            >
+              <ChevronLeft width="32" />
+            </motion.div>
+          </Button>
+          <Card className="absolute h-screen w-full z-10 backdrop-blur-sm bg-background/50">
+            <CardHeader>
+              <CardTitle>{"Miner's Delight"}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col h-full w-full">
+              <Tabs
+                defaultValue="inventory"
+                value={currentTab}
+                className="flex flex-col h-full"
+              >
+                <TabsList className="w-full flex">
+                  <TabsTrigger
+                    className="basis-full"
+                    value="inventory"
+                    onClick={() => mutateGameStore("currentTab", "inventory")}
+                  >
+                    Inventory
+                  </TabsTrigger>
+                  <TabsTrigger
+                    className="basis-full"
+                    value="shop"
+                    onClick={() => mutateGameStore("currentTab", "shop")}
+                  >
+                    Shop
+                  </TabsTrigger>
+                  <TabsTrigger
+                    className="basis-full"
+                    value="settings"
+                    onClick={() => mutateGameStore("currentTab", "settings")}
+                  >
+                    Settings
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent
+                  className="relative flex flex-col h-full"
+                  value="inventory"
+                >
+                  <InventoryTab />
+                </TabsContent>
+                <TabsContent
+                  className="relative flex flex-col h-full"
+                  value="shop"
+                >
+                  <ShopTab />
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <div className="w-full h-screen">
+          <Canvas
+            shadows
+            onMouseDown={() => mutateCameraStore("shouldOrbit", false)}
+            onMouseUp={() => mutateCameraStore("shouldOrbit", true)}
+            onMouseLeave={() => mutateCameraStore("shouldOrbit", true)}
+          >
+            <Scene />
+          </Canvas>
         </div>
-      </div>
 
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700/10 after:dark:from-sky-900 after:dark:via-[#0141ff]/40 before:lg:h-[360px]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
+        {selectedWorldItem !== undefined && <SelectedWorldItemPrompt />}
 
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Discover and deploy boilerplate example Next.js&nbsp;projects.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
-  )
+        {selectedItem !== undefined && <BuildModePrompt />}
+      </main>
+    </>
+  );
 }
+
+function Scene() {
+  const cameraRef = useRef<THREE.PerspectiveCamera>(null);
+
+  const { orbitDistance, orbitHeight, orbitAngle } = useCameraStore();
+
+  const { buildPlateSize, selectedWorldItem } = useGameStore((s) => ({
+    buildPlateSize: s.buildPlateSize,
+    selectedWorldItem: s.selectedWorldItem,
+  }));
+
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+
+  const mouse = useThree((s) => s.mouse);
+
+  const selectedItem = useBuildModeStore((s) => s.selectedItem);
+
+  useFrame(({ camera, scene }) => {
+    if (selectedItem === undefined) return;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    const intersections = raycaster.intersectObjects([scene], true);
+
+    if (intersections.length > 0) {
+      const intersection = intersections[0];
+
+      setBuildModePos([
+        clamp(
+          Math.round(intersection.point.x),
+          buildPlateSize / -2,
+          buildPlateSize / 2
+        ),
+        clamp(
+          Math.round(intersection.point.z),
+          buildPlateSize / -2,
+          buildPlateSize / 2
+        ),
+      ]);
+    }
+  });
+
+  const { data: dataEntities } = useQuery({
+    queryKey: ["entityRegistry"],
+    queryFn: () => fetchEntityRegistry(),
+    refetchOnWindowFocus: false,
+  });
+
+  useFrame(({ camera }) => {
+    if (!selectedWorldItem) return;
+
+    const worldPoint = new THREE.Vector3(
+      selectedWorldItem.position[0],
+      0,
+      selectedWorldItem.position[1]
+    );
+
+    const screenSpaceCoords = worldPoint.project(camera);
+
+    mutateGameStore("screenSpaceSelectedWorldItem", [
+      screenSpaceCoords.x,
+      screenSpaceCoords.y,
+    ]);
+  });
+
+  const { placedItems } = useUserDataStore((s) => ({
+    placedItems: s.placedItems,
+  }));
+
+  const placedItemComponents = useMemo(() => {
+    if (!dataEntities) return [];
+
+    return placedItems.map(({ id, position }, index) => {
+      const item = dataEntities[id];
+
+      return <PlacedItem key={index} item={item} pos={position} />;
+    });
+  }, [dataEntities, placedItems]);
+
+  useEffect(() => {
+    if (!cameraRef.current) return;
+
+    cameraRef.current.position.y = orbitHeight;
+    cameraRef.current.position.x = Math.cos(orbitAngle) * orbitDistance;
+    cameraRef.current.position.z = Math.sin(orbitAngle) * orbitDistance;
+
+    cameraRef.current.lookAt(new THREE.Vector3(0, 0, 0));
+  }, [cameraRef, orbitHeight, orbitAngle, orbitDistance]);
+
+  if (!dataEntities) return null;
+
+  function handleBuildPlateClick() {
+    // if (selectedWorldItem !== undefined) {
+    //   mutateGameStore("selectedWorldItem", undefined);
+    //   return;
+    // }
+
+    if (selectedItem !== undefined) {
+      tryPlaceItem();
+      return;
+    }
+  }
+
+  return (
+    <>
+      <Environment preset="sunset" blur={0.5} background={true} />
+      <Stars
+        radius={100}
+        depth={50}
+        count={5000}
+        factor={5}
+        saturation={255}
+        fade
+        speed={1}
+      />
+      <PerspectiveCamera
+        ref={cameraRef}
+        makeDefault
+        fov={75}
+        position={[0, 0, 5]}
+      />
+      <OrbitControls makeDefault />
+
+      <group name="build-plate" position={[0, -1, 0]}>
+        <mesh onPointerDown={() => handleBuildPlateClick()}>
+          <boxGeometry args={[buildPlateSize, 1, buildPlateSize]} />
+          <meshStandardMaterial />
+        </mesh>
+      </group>
+
+      <group name="placed-items">{placedItemComponents}</group>
+
+      {selectedItem !== undefined && (
+        <>
+          <BuildItemGhost item={selectedItem} />
+          <BuildingGrid />
+        </>
+      )}
+    </>
+  );
+}
+
+const Shadows = memo(() => (
+  <AccumulativeShadows
+    temporal
+    frames={100}
+    color="#d08049"
+    colorBlend={1}
+    alphaTest={0.9}
+    scale={3}
+    opacity={0.6}
+  >
+    <RandomizedLight amount={10} radius={1} position={[5, 5, 5]} />
+  </AccumulativeShadows>
+));
+
+Shadows.displayName = "Shadows";
