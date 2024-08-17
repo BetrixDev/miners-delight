@@ -14,5 +14,5 @@ export function useEventListener<TEvent extends keyof WindowEventMap>(
     return () => {
       window.removeEventListener(eventName, handler);
     };
-  });
+  }, []);
 }
