@@ -26,6 +26,7 @@ export function IsometricControls() {
   const target = useRef(new THREE.Vector3(0, 0, 0));
   const zoom = useRef(10);
   const isRotating = useRef(false);
+  const isRecentering = useRef(false);
   const currentAngle = useRef(0);
 
   useEffect(() => {
@@ -57,6 +58,24 @@ export function IsometricControls() {
           },
           onComplete: () => {
             isRotating.current = false;
+          },
+        });
+      }
+
+      if (key === "c" && !isRecentering.current) {
+        isRecentering.current = true;
+        const startX = target.current.x;
+        const startZ = target.current.z;
+
+        animate(0, 1, {
+          duration: ROTATION_DURATION,
+          ease: [0.4, 0, 0.2, 1],
+          onUpdate: (t) => {
+            target.current.x = startX * (1 - t);
+            target.current.z = startZ * (1 - t);
+          },
+          onComplete: () => {
+            isRecentering.current = false;
           },
         });
       }
