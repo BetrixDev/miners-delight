@@ -51,6 +51,7 @@
         "tw-animate-css": "^1.2.5",
         "vite-tsconfig-paths": "^5.1.4",
         "zod": "catalog:",
+        "zustand": "^5.0.9",
       },
       "devDependencies": {
         "@miners-delight/config": "workspace:*",

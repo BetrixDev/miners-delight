@@ -2,6 +2,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { animate } from "motion";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { useCameraStore } from "@/stores/camera-store";
 
 const CAMERA_DISTANCE = 50;
 const MOVE_SPEED = 0.5;
@@ -10,6 +11,7 @@ const ZOOM_SPEED = 0.1;
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 50;
 const ROTATION_DURATION = 0.4;
+const AUTO_ROTATE_SPEED = 0.001;
 
 // Rotate a 2D point (x, z) around origin by angle
 function rotateXZ(x: number, z: number, angle: number): [number, number] {
@@ -20,13 +22,16 @@ function rotateXZ(x: number, z: number, angle: number): [number, number] {
 
 export function IsometricControls() {
   const { camera, gl } = useThree();
+  const isAutoRotating = useCameraStore((state) => state.isRotating);
   const keys = useRef<Set<string>>(new Set());
   const isDragging = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
   const target = useRef(new THREE.Vector3(0, 0, 0));
   const zoom = useRef(10);
-  const isRotating = useRef(false);
+  const isManualRotating = useRef(false);
   const isRecentering = useRef(false);
+  const isSnapping = useRef(false);
+  const wasAutoRotating = useRef(false);
   const currentAngle = useRef(0);
 
   useEffect(() => {
@@ -45,8 +50,8 @@ export function IsometricControls() {
       const key = e.key.toLowerCase();
       keys.current.add(key);
 
-      if (key === "x" && !isRotating.current) {
-        isRotating.current = true;
+      if (key === "x" && !isManualRotating.current && !isAutoRotating) {
+        isManualRotating.current = true;
         const startAngle = currentAngle.current;
         const endAngle = startAngle + Math.PI / 2;
 
@@ -57,7 +62,7 @@ export function IsometricControls() {
             currentAngle.current = value;
           },
           onComplete: () => {
-            isRotating.current = false;
+            isManualRotating.current = false;
           },
         });
       }
@@ -153,9 +158,35 @@ export function IsometricControls() {
       gl.domElement.removeEventListener("wheel", handleWheel);
       gl.domElement.removeEventListener("contextmenu", handleContextMenu);
     };
-  }, [camera, gl]);
+  }, [camera, gl, isAutoRotating]);
 
   useFrame(() => {
+    // Handle auto-rotation
+    if (isAutoRotating) {
+      currentAngle.current += AUTO_ROTATE_SPEED;
+      wasAutoRotating.current = true;
+    } else if (wasAutoRotating.current && !isSnapping.current) {
+      // Just stopped auto-rotating, snap to nearest 90°
+      wasAutoRotating.current = false;
+      isSnapping.current = true;
+
+      const quarterTurn = Math.PI / 2;
+      const nearestAngle =
+        Math.round(currentAngle.current / quarterTurn) * quarterTurn;
+      const startAngle = currentAngle.current;
+
+      animate(startAngle, nearestAngle, {
+        duration: ROTATION_DURATION,
+        ease: [0.4, 0, 0.2, 1],
+        onUpdate: (value) => {
+          currentAngle.current = value;
+        },
+        onComplete: () => {
+          isSnapping.current = false;
+        },
+      });
+    }
+
     // Base WASD directions (at angle 0)
     // W: up-left on screen (-X, -Z), S: down-right (+X, +Z)
     // A: down-left (-X, +Z), D: up-right (+X, -Z)
