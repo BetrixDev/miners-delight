@@ -134,6 +134,12 @@
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
   --color-destructive-foreground: var(--destructive-foreground);
+  --animate-skeleton: skeleton 2s -1s infinite linear;
+  @keyframes skeleton {
+  to {
+    background-position: -200% 0;
+    }
+  }
 }
 
 @layer base {
@@ -145,5 +151,14 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
   }
 }
